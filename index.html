@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pong</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: 'Courier New', monospace;
+      color: #fff;
+    }
+    canvas {
+      border: 2px solid #fff;
+      display: block;
+    }
+    #info {
+      margin-top: 12px;
+      font-size: 13px;
+      color: #888;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="pong" width="800" height="500"></canvas>
+  <div id="info">W/S — Left paddle &nbsp;|&nbsp; ↑/↓ — Right paddle &nbsp;|&nbsp; Space — Start/Pause</div>
+
+  <script>
+    const canvas = document.getElementById('pong');
+    const ctx = canvas.getContext('2d');
+
+    const W = canvas.width;
+    const H = canvas.height;
+    const PADDLE_W = 12;
+    const PADDLE_H = 80;
+    const BALL_SIZE = 10;
+    const PADDLE_SPEED = 5;
+    const WINNING_SCORE = 7;
+
+    let state = 'waiting'; // waiting | playing | paused | over
+
+    const left = { x: 20, y: H / 2 - PADDLE_H / 2, score: 0 };
+    const right = { x: W - 20 - PADDLE_W, y: H / 2 - PADDLE_H / 2, score: 0 };
+
+    function resetBall(direction = 1) {
+      return {
+        x: W / 2,
+        y: H / 2,
+        vx: 5 * direction,
+        vy: (Math.random() * 4 - 2),
+        speed: 5,
+      };
+    }
+
+    let ball = resetBall();
+
+    const keys = {};
+    document.addEventListener('keydown', e => {
+      keys[e.key] = true;
+      if (e.key === ' ') {
+        e.preventDefault();
+        if (state === 'waiting' || state === 'over') startGame();
+        else if (state === 'playing') state = 'paused';
+        else if (state === 'paused') state = 'playing';
+      }
+    });
+    document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+    function startGame() {
+      left.score = 0;
+      right.score = 0;
+      left.y = H / 2 - PADDLE_H / 2;
+      right.y = H / 2 - PADDLE_H / 2;
+      ball = resetBall(Math.random() < 0.5 ? 1 : -1);
+      state = 'playing';
+    }
+
+    function clampPaddle(paddle) {
+      paddle.y = Math.max(0, Math.min(H - PADDLE_H, paddle.y));
+    }
+
+    function update() {
+      if (state !== 'playing') return;
+
+      // Move paddles
+      if (keys['w'] || keys['W']) left.y -= PADDLE_SPEED;
+      if (keys['s'] || keys['S']) left.y += PADDLE_SPEED;
+      if (keys['ArrowUp']) right.y -= PADDLE_SPEED;
+      if (keys['ArrowDown']) right.y += PADDLE_SPEED;
+      clampPaddle(left);
+      clampPaddle(right);
+
+      // Move ball
+      ball.x += ball.vx;
+      ball.y += ball.vy;
+
+      // Top/bottom bounce
+      if (ball.y <= 0) { ball.y = 0; ball.vy *= -1; }
+      if (ball.y + BALL_SIZE >= H) { ball.y = H - BALL_SIZE; ball.vy *= -1; }
+
+      // Left paddle collision
+      if (
+        ball.x <= left.x + PADDLE_W &&
+        ball.x + BALL_SIZE >= left.x &&
+        ball.y + BALL_SIZE >= left.y &&
+        ball.y <= left.y + PADDLE_H &&
+        ball.vx < 0
+      ) {
+        ball.vx *= -1.05;
+        ball.vy = ((ball.y + BALL_SIZE / 2) - (left.y + PADDLE_H / 2)) / (PADDLE_H / 2) * 5;
+        ball.x = left.x + PADDLE_W;
+      }
+
+      // Right paddle collision
+      if (
+        ball.x + BALL_SIZE >= right.x &&
+        ball.x <= right.x + PADDLE_W &&
+        ball.y + BALL_SIZE >= right.y &&
+        ball.y <= right.y + PADDLE_H &&
+        ball.vx > 0
+      ) {
+        ball.vx *= -1.05;
+        ball.vy = ((ball.y + BALL_SIZE / 2) - (right.y + PADDLE_H / 2)) / (PADDLE_H / 2) * 5;
+        ball.x = right.x - BALL_SIZE;
+      }
+
+      // Cap speed
+      const maxSpeed = 12;
+      const speed = Math.sqrt(ball.vx ** 2 + ball.vy ** 2);
+      if (speed > maxSpeed) {
+        ball.vx = (ball.vx / speed) * maxSpeed;
+        ball.vy = (ball.vy / speed) * maxSpeed;
+      }
+
+      // Scoring
+      if (ball.x < 0) {
+        right.score++;
+        if (right.score >= WINNING_SCORE) { state = 'over'; return; }
+        ball = resetBall(1);
+      }
+      if (ball.x > W) {
+        left.score++;
+        if (left.score >= WINNING_SCORE) { state = 'over'; return; }
+        ball = resetBall(-1);
+      }
+    }
+
+    function drawRect(x, y, w, h, color = '#fff') {
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, w, h);
+    }
+
+    function drawText(text, x, y, size = 32, align = 'center') {
+      ctx.fillStyle = '#fff';
+      ctx.font = `${size}px 'Courier New', monospace`;
+      ctx.textAlign = align;
+      ctx.fillText(text, x, y);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // Centre dashed line
+      ctx.setLineDash([10, 10]);
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(W / 2, 0);
+      ctx.lineTo(W / 2, H);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Scores
+      drawText(left.score, W / 4, 60, 48);
+      drawText(right.score, 3 * W / 4, 60, 48);
+
+      // Paddles
+      drawRect(left.x, left.y, PADDLE_W, PADDLE_H);
+      drawRect(right.x, right.y, PADDLE_W, PADDLE_H);
+
+      // Ball
+      drawRect(ball.x, ball.y, BALL_SIZE, BALL_SIZE);
+
+      // Overlays
+      if (state === 'waiting') {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(0, 0, W, H);
+        drawText('PONG', W / 2, H / 2 - 30, 64);
+        drawText('Press SPACE to start', W / 2, H / 2 + 30, 18);
+      }
+
+      if (state === 'paused') {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(0, 0, W, H);
+        drawText('PAUSED', W / 2, H / 2, 48);
+        drawText('Press SPACE to resume', W / 2, H / 2 + 40, 18);
+      }
+
+      if (state === 'over') {
+        const winner = left.score >= WINNING_SCORE ? 'LEFT' : 'RIGHT';
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(0, 0, W, H);
+        drawText(`${winner} WINS!`, W / 2, H / 2 - 30, 48);
+        drawText('Press SPACE to play again', W / 2, H / 2 + 30, 18);
+      }
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    loop();
+  </script>
+</body>
+</html>
